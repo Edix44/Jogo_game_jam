@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doutor Por Acaso: 60 Segundos de Emergência</title>
+    <!-- Tailwind CSS para estilização rápida e responsiva da interface -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonte Inter e JetBrains Mono para o cronômetro -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        .font-mono-timer {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Animação de urgência quando o tempo está acabando */
+        @keyframes pulse-danger {
+            0%, 100% { transform: scale(1); background-color: rgba(220, 38, 38, 0.25); border-color: #ef4444; }
+            50% { transform: scale(1.04); background-color: rgba(220, 38, 38, 0.55); border-color: #fca5a5; }
+        }
+        .timer-urgent {
+            animation: pulse-danger 0.6s infinite ease-in-out;
+        }
+        /* Efeito de tremor na tela quando erra o instrumento */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 4px); }
+            40% { transform: translate(8px, -4px); }
+            60% { transform: translate(-6px, -2px); }
+            80% { transform: translate(6px, 2px); }
+        }
+        .screen-shake {
+            animation: shake 0.35s ease-in-out;
+        }
+        /* Scrollbar customizada para a folha de consulta */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            image-rendering: crisp-edges;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-2 sm:p-4 bg-slate-950">
+
+    <!-- ==================== BARRA DE TOPO (HUD DO JOGO) ==================== -->
+    <header class="w-full max-w-6xl bg-slate-900/90 border border-slate-700/80 rounded-2xl p-3 sm:p-4 shadow-2xl mb-2 backdrop-blur-md">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+            
+            <!-- 1. CRONÔMETRO DE 60 SEGUNDOS -->
+            <div id="timerBox" class="flex items-center gap-3 bg-slate-800/90 border-2 border-emerald-500/60 rounded-xl p-2.5 transition-all">
+                <div class="text-2xl sm:text-3xl animate-pulse">⏱️</div>
+                <div>
+                    <div class="text-[11px] uppercase tracking-wider font-bold text-slate-400">Tempo de Vida</div>
+                    <div id="timerDisplay" class="font-mono-timer text-2xl sm:text-3xl font-extrabold text-emerald-400 leading-none">60.0s</div>
+                </div>
+            </div>
+
+            <!-- 2. PACIENTE ATUAL E PROBLEMAS -->
+            <div class="flex items-center gap-3 bg-slate-800/90 border border-slate-700 rounded-xl p-2.5">
+                <div class="text-2xl sm:text-3xl">🛌</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center">
+                        <span id="patientNumberDisplay" class="text-xs uppercase tracking-wider font-bold text-cyan-400">Paciente #1/8</span>
+                        <span id="scoreDisplay" class="text-xs font-bold bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded-md border border-cyan-700/50">0 pts</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <div class="text-sm sm:text-base font-bold text-white truncate">
+                            Problemas: <span id="problemsCountDisplay" class="text-rose-400">3/3</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. ITEM EQUIPADO NA MÃO (MÁX 1) -->
+            <div class="flex items-center gap-3 bg-slate-800/90 border-2 border-amber-500/40 rounded-xl p-2.5">
+                <div id="heldItemIcon" class="w-11 h-11 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl shadow-inner">
+                    ✋
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-[11px] uppercase tracking-wider font-bold text-amber-400">Item na Mão (Máx 1)</div>
+                    <div id="heldItemName" class="text-sm sm:text-base font-bold text-slate-200 truncate">Mãos Vazias</div>
+                </div>
+            </div>
+
+            <!-- 4. DIAGNÓSTICO DO PACIENTE / BOTÕES RÁPIDOS -->
+            <div class="flex items-center justify-between gap-2 bg-slate-800/90 border border-slate-700 rounded-xl p-2.5">
+                <div class="flex-1 min-w-0">
+                    <div class="text-[11px] uppercase tracking-wider font-bold text-purple-400">Sintomas Observados</div>
+                    <div id="observedSymptomsHud" class="text-xs text-slate-300 truncate font-medium">
+                        Vá até a cama p/ examinar!
+                    </div>
+                </div>
+                <button id="muteBtn" onclick="toggleAudio()" title="Ativar/Desativar Som" class="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition">
+                    🔊
+                </button>
+            </div>
+
+        </div>
+
+        <!-- BARRA SECUNDÁRIA: EFEITOS ATIVOS (POWER-UPS / ACIDENTES) E LEGENDA DE CONTORNOS -->
+        <div class="mt-2.5 pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <!-- Status Ativos no Jogador -->
+            <div class="flex items-center gap-1.5 flex-wrap min-h-[24px]" id="activeEffectsHud">
+                <span class="text-slate-500 font-semibold italic">Nenhum efeito ativo no momento</span>
+            </div>
+
+            <!-- Legenda Rápida de Cores -->
+            <div class="flex items-center gap-3 flex-wrap text-[11px] font-bold">
+                <span class="flex items-center gap-1 text-emerald-400">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block ring-2 ring-emerald-500/40"></span>
+                    Verde: Power-Ups (10s)
+                </span>
+                <span class="flex items-center gap-1 text-amber-300">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block ring-2 ring-amber-400/40"></span>
+                    Amarelo: Equipe (Empurra)
+                </span>
+                <span class="flex items-center gap-1 text-rose-400">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block ring-2 ring-rose-500/40"></span>
+                    Vermelho: Acidentes (10s)
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== ÁREA PRINCIPAL DO JOGO (CANVAS + OVERLAYS) ==================== -->
+    <main id="gameContainer" class="relative w-full max-w-6xl bg-slate-900 border-2 border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
+        
+        <!-- Canvas onde o Hospital Top-Down é desenhado -->
+        <canvas id="gameCanvas" width="960" height="600"></canvas>
+
+        <!-- Dica de Interação Flutuante na parte inferior da tela -->
+        <div id="interactionPrompt" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/95 border-2 border-cyan-400 text-white px-5 py-2.5 rounded-full shadow-xl flex items-center gap-3 pointer-events-none z-10 animate-bounce">
+            <span class="bg-cyan-500 text-slate-950 font-black px-2.5 py-0.5 rounded-md text-sm">E / ESPAÇO</span>
+            <span id="interactionText" class="font-bold text-sm sm:text-base">Interagir</span>
+        </div>
+
+        <!-- Painel Flutuante de Diagnóstico quando perto do Paciente -->
+        <div id="patientInspectCard" class="hidden absolute top-3 left-3 bg-slate-900/95 border-2 border-rose-500/80 rounded-xl p-3.5 shadow-2xl max-w-xs sm:max-w-sm pointer-events-none z-10 backdrop-blur-md">
+            <div class="flex items-center gap-2 border-b border-slate-700 pb-2 mb-2">
+                <span class="text-xl">🔍</span>
+                <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-rose-400">Diagnóstico Visual do Paciente</h3>
+                    <p class="text-[11px] text-slate-400">Consulte a Folha 📋 ao lado para saber qual item usar!</p>
+                </div>
+            </div>
+            <ul id="patientSymptomsList" class="space-y-1.5 text-xs sm:text-sm font-semibold">
+                <!-- Preenchido via JS -->
+            </ul>
+        </div>
+
+        <!-- ==================== POP-UP: FOLHA DE COLA DO MÉDICO SUBSTITUTO ==================== -->
+        <div id="manualModal" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-30 flex items-center justify-center p-3 sm:p-6">
+            <div class="bg-amber-50 text-slate-900 border-4 border-amber-700/80 rounded-2xl w-full max-w-4xl max-h-[90%] flex flex-col shadow-2xl overflow-hidden">
+                <!-- Cabeçalho do Prontuário / Folha -->
+                <div class="bg-amber-200/90 border-b-2 border-amber-400 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-3">
+                        <span class="text-3xl">📋</span>
+                        <div>
+                            <h2 class="text-base sm:text-xl font-black text-amber-950 uppercase tracking-tight">
+                                Folha de Cola do Médico Substituto
+                            </h2>
+                            <p class="text-xs text-amber-800 font-semibold">
+                                ⚠️ O TEMPO CONTINUA CORRENDO! Decore o instrumento necessário e feche a folha!
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input id="manualSearch" type="text" placeholder="Filtrar sintoma (ex: Verde, Azul)..." 
+                            class="px-3 py-1.5 rounded-lg bg-white border border-amber-400 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                            oninput="renderManualList(this.value)">
+                        <button onclick="closeManual()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs sm:text-sm shadow transition">
+                            Fechar (E / ESC)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lista dos 20 Problemas e suas respectivas Ferramentas -->
+                <div class="p-3 sm:p-4 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-amber-50/90" id="manualGrid">
+                    <!-- Gerado dinamicamente pelo JS com os 20 itens -->
+                </div>
+
+                <!-- Rodapé da Folha -->
+                <div class="bg-amber-100 border-t border-amber-300 px-4 py-2 text-center text-xs font-bold text-amber-900">
+                    Dica: Os sintomas que você já observou no paciente atual aparecem destacados com uma borda vermelha!
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TELA INICIAL (MENU PRINCIPAL) ==================== -->
+        <div id="startScreen" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-40 flex items-center justify-center p-4">
+            <div class="max-w-3xl w-full bg-slate-900 border-2 border-cyan-500/50 rounded-3xl p-5 sm:p-7 shadow-2xl text-center max-h-[95vh] overflow-y-auto">
+                <div class="inline-flex items-center gap-2 bg-rose-500/20 border border-rose-500/50 text-rose-300 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest mb-2">
+                    🚨 Desafio Game Jam: 60 Segundos por Paciente
+                </div>
+                <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight mb-2">
+                    DOUTOR <span class="text-cyan-400">POR ACASO</span>
+                </h1>
+                <p class="text-slate-300 text-xs sm:text-sm mb-4 max-w-2xl mx-auto leading-relaxed">
+                    O médico titular sumiu e colocaram <strong>você</strong> no plantão! Salve <strong>8 pacientes seguidos</strong> (cada um com <span class="text-emerald-400 font-bold">60 segundos de vida</span>). Use a <strong>Folha de Cola 📋</strong> ao lado da maca para descobrir qual dos 20 aparelhos cura cada sintoma!
+                </p>
+
+                <!-- Como Jogar e Novas Mecânicas -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left mb-4">
+                    <div class="bg-slate-800/90 border border-slate-700 p-3 rounded-xl flex items-start gap-2.5">
+                        <span class="text-2xl">🛌</span>
+                        <div>
+                            <h3 class="font-bold text-white text-xs sm:text-sm">1. Meta: 8 Pacientes (Máx 7 Problemas)</h3>
+                            <p class="text-[11px] text-slate-300 mt-0.5">Começa com 3 problemas no Paciente #1 e sobe até o limite de <b>7 problemas</b> a partir do 5º paciente. Consulte a Folha 📋 e traga 1 item por vez!</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/90 border border-amber-500/50 p-3 rounded-xl flex items-start gap-2.5">
+                        <span class="text-2xl">👨‍⚕️</span>
+                        <div>
+                            <h3 class="font-bold text-amber-300 text-xs sm:text-sm">2. Contorno Amarelo: Médicos/Enfermeiros</h3>
+                            <p class="text-[11px] text-slate-300 mt-0.5">A partir do 3º paciente, surgem colegas andando pelos corredores (2 no 3º, 3 no 5º, 4 no 7º). Eles bloqueiam passagens e <b>empurram você</b>!</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/90 border border-rose-500/50 p-3 rounded-xl flex items-start gap-2.5">
+                        <span class="text-2xl">☣️</span>
+                        <div>
+                            <h3 class="font-bold text-rose-400 text-xs sm:text-sm">3. Contorno Vermelho: Acidentes (10s)</h3>
+                            <p class="text-[11px] text-slate-300 mt-0.5">Do 2º paciente em diante surgem acidentes que mudam de lugar a cada 10s: <b>Nuvem Tóxica</b> (inverte controles 5s), <b>Composto Volátil</b> (explode e tranca corredor 8s) e <b>Vírus</b> (lentidão 5s).</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/90 border border-emerald-500/50 p-3 rounded-xl flex items-start gap-2.5">
+                        <span class="text-2xl">☕</span>
+                        <div>
+                            <h3 class="font-bold text-emerald-400 text-xs sm:text-sm">4. Contorno Verde: Power-Ups em Cadeia</h3>
+                            <p class="text-[11px] text-slate-300 mt-0.5">3 ativos por vez (trocam a cada 10s ou renascem na hora ao pegar!): <b>Café ☕</b> (velocidade 2x por 5s), <b>Calmante 💊</b> (atravessa tudo/imune por 8s) e <b>Foco 🧠</b> (destaca itens de cura por 10s).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controles -->
+                <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 mb-5 flex flex-wrap items-center justify-center gap-4 text-xs text-slate-300">
+                    <div><kbd class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-bold text-white">W A S D</kbd> ou <kbd class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-bold text-white">Setas</kbd> Mover Médico</div>
+                    <div><kbd class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-bold text-cyan-300">E</kbd> ou <kbd class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-bold text-cyan-300">ESPAÇO</kbd> Ler Folha / Pegar Item / Curar</div>
+                </div>
+
+                <button onclick="startGame()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-base sm:text-lg px-10 py-3 rounded-xl shadow-lg shadow-cyan-500/25 transform hover:scale-105 transition cursor-pointer">
+                    🩺 INICIAR PLANTÃO (SALVAR 8 PACIENTES!)
+                </button>
+            </div>
+        </div>
+
+        <!-- ==================== TELA DE FIM DE JOGO (DERROTA OU VITÓRIA) ==================== -->
+        <div id="endScreen" class="hidden absolute inset-0 bg-slate-950/95 backdrop-blur-md z-40 flex items-center justify-center p-4">
+            <div class="max-w-lg w-full bg-slate-900 border-2 border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl text-center">
+                <div id="endIcon" class="text-6xl mb-3">💀</div>
+                <h2 id="endTitle" class="text-3xl sm:text-4xl font-black text-white mb-2">TEMPO ESGOTADO!</h2>
+                <p id="endReason" class="text-slate-300 text-sm sm:text-base mb-6">
+                    Os 60 segundos acabaram e o conselho médico descobriu que você não tinha diploma!
+                </p>
+
+                <!-- Resumo de Desempenho -->
+                <div class="grid grid-cols-3 gap-2.5 mb-6 bg-slate-950/90 p-4 rounded-2xl border border-slate-800">
+                    <div>
+                        <div class="text-[11px] uppercase font-bold text-slate-400">Pacientes Salvos</div>
+                        <div id="finalPatientsSaved" class="text-2xl font-black text-emerald-400">0</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] uppercase font-bold text-slate-400">Sintomas Curados</div>
+                        <div id="finalSymptomsCured" class="text-2xl font-black text-cyan-400">0</div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] uppercase font-bold text-slate-400">Pontuação Final</div>
+                        <div id="finalScore" class="text-2xl font-black text-amber-400">0</div>
+                    </div>
+                </div>
+
+                <button onclick="startGame()" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-lg py-3.5 rounded-xl shadow-lg transition transform hover:scale-105 cursor-pointer">
+                    🔄 JOGAR NOVAMENTE
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ==================== CONTROLES TOUCH / MOBILE E RODAPÉ ==================== -->
+    <footer class="w-full max-w-6xl mt-2 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+        <!-- Botões Touch para quem estiver em celular ou preferir clicar -->
+        <div class="flex items-center gap-2 sm:hidden w-full justify-between bg-slate-900 p-2 rounded-xl border border-slate-800">
+            <div class="grid grid-cols-3 gap-1 w-32">
+                <div></div>
+                <button ontouchstart="setTouchKey('up', true)" ontouchend="setTouchKey('up', false)" class="bg-slate-800 active:bg-cyan-600 p-2.5 rounded-lg text-center font-bold text-white">▲</button>
+                <div></div>
+                <button ontouchstart="setTouchKey('left', true)" ontouchend="setTouchKey('left', false)" class="bg-slate-800 active:bg-cyan-600 p-2.5 rounded-lg text-center font-bold text-white">◀</button>
+                <button ontouchstart="setTouchKey('down', true)" ontouchend="setTouchKey('down', false)" class="bg-slate-800 active:bg-cyan-600 p-2.5 rounded-lg text-center font-bold text-white">▼</button>
+                <button ontouchstart="setTouchKey('right', true)" ontouchend="setTouchKey('right', false)" class="bg-slate-800 active:bg-cyan-600 p-2.5 rounded-lg text-center font-bold text-white">▶</button>
+            </div>
+            <div class="flex flex-col gap-2 flex-1 pl-3">
+                <button onclick="handleInteractAction()" class="w-full bg-cyan-500 active:bg-cyan-400 text-slate-950 font-black py-3 rounded-xl shadow text-sm">
+                    ⚡ INTERAGIR / USAR (E)
+                </button>
+                <button onclick="toggleManual()" class="w-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold py-2 rounded-xl text-xs">
+                    📋 Ver Folha (se perto do painel)
+                </button>
+            </div>
+        </div>
+
+        <div class="hidden sm:flex items-center gap-4">
+            <span>🏥 <strong>Doutor Por Acaso</strong> — Protótipo Game Jam (60 Segundos)</span>
+            <span>•</span>
+            <span>Dica: Passe perto da maca para listar os sintomas e consulte a Folha 📋 ao lado!</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="startGame()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg font-semibold border border-slate-700 transition">
+                🔄 Reiniciar Partida
+            </button>
+        </div>
+    </footer>
+
+    <!-- ==================== LÓGICA DO JOGO EM JAVASCRIPT ==================== -->
+    <script>
+        /**
+         * ============================================================================
+         * 1. BANCO DE DADOS DAS 20 CONDIÇÕES MÉDICAS E 20 FERRAMENTAS
+         * ============================================================================
+         * Inclui exatamente as 3 pedidas (Verde -> Serrote, Vermelho -> Analgésicos,
+         * Azul -> Estetoscópio) + 17 condições divertidas para totalizar os 20 aparelhos!
+         */
+        const MEDICAL_DATABASE = [
+            { id: 1,  symptom: "Pele Verde",              color: "#22c55e", badge: "🟢", part: "skin",  toolName: "Serrote",               toolIcon: "🪚", desc: "Paciente está esverdeado da cabeça aos pés!" },
+            { id: 2,  symptom: "Membro Vermelho",         color: "#ef4444", badge: "🔴", part: "limb",  toolName: "Analgésicos",           toolIcon: "💊", desc: "Braço e perna piscando em vermelho vivo!" },
+            { id: 3,  symptom: "Rosto Azul",              color: "#3b82f6", badge: "🔵", part: "face",  toolName: "Estetoscópio",          toolIcon: "🩺", desc: "Cabeça azulada precisando de ausculta urgente!" },
+            { id: 4,  symptom: "Febre Amarela Brilhante", color: "#eab308", badge: "🟡", part: "aura",  toolName: "Termômetro",            toolIcon: "🌡️", desc: "Vapor amarelo saindo da testa!" },
+            { id: 5,  symptom: "Choque Elétrico Roxo",    color: "#a855f7", badge: "🟣", part: "aura",  toolName: "Desfibrilador",         toolIcon: "⚡", desc: "Faíscas roxas estalando pelo corpo!" },
+            { id: 6,  symptom: "Ossos Transparentes",     color: "#f8fafc", badge: "⚪", part: "chest", toolName: "Raio-X Portátil",       toolIcon: "🩻", desc: "Costelas brilhando como vidro!" },
+            { id: 7,  symptom: "Sangue Laranja",          color: "#f97316", badge: "🟠", part: "limb",  toolName: "Seringa",               toolIcon: "💉", desc: "Veias alaranjadas pulsando forte!" },
+            { id: 8,  symptom: "Cabeça Quadrada",         color: "#a16207", badge: "🟫", part: "face",  toolName: "Martelo de Reflexo",    toolIcon: "🔨", desc: "Crânio ficou com formato de caixote!" },
+            { id: 9,  symptom: "Olhos Girando",           color: "#06b6d4", badge: "🌀", part: "face",  toolName: "Lanterna Clínica",      toolIcon: "🔦", desc: "Pupilas rodando igual peão!" },
+            { id: 10, symptom: "Pés Congelados",          color: "#38bdf8", badge: "🧊", part: "feet",  toolName: "Bolsa Térmica",         toolIcon: "🔥", desc: "Bloco de gelo nos pés do paciente!" },
+            { id: 11, symptom: "Mãos Gigantes",           color: "#fb7185", badge: "✋", part: "limb",  toolName: "Bisturi",               toolIcon: "🔪", desc: "Mãos inchadas do tamanho de luvas de boxe!" },
+            { id: 12, symptom: "Tosse de Fumaça Cinza",   color: "#94a3b8", badge: "🌫️", part: "face",  toolName: "Inalador",              toolIcon: "💨", desc: "Soltando nuvens cinzas pela boca!" },
+            { id: 13, symptom: "Coração Acelerado Rosa",  color: "#ec4899", badge: "💗", part: "chest", toolName: "Marcapasso",            toolIcon: "💓", desc: "Peito batendo em neon cor-de-rosa!" },
+            { id: 14, symptom: "Barriga Inflada",         color: "#84cc16", badge: "🎈", part: "chest", toolName: "Desentupidor Cirúrgico",toolIcon: "🪠", desc: "Estômago redondo prestes a flutuar!" },
+            { id: 15, symptom: "Orelhas Apitando",        color: "#facc15", badge: "🔔", part: "face",  toolName: "Otoscópio",             toolIcon: "🔎", desc: "Ondas sonoras saindo das orelhas!" },
+            { id: 16, symptom: "Dentes Soltos",           color: "#e2e8f0", badge: "🦷", part: "face",  toolName: "Alicate Médico",        toolIcon: "🔧", desc: "Sorriso chacoalhando sem parar!" },
+            { id: 17, symptom: "Corte Profundo",          color: "#dc2626", badge: "🩸", part: "chest", toolName: "Kit de Sutura",         toolIcon: "🪡", desc: "Precisa dar pontos imediatamente!" },
+            { id: 18, symptom: "Fratura Exposta",         color: "#d6d3d1", badge: "🦴", part: "feet",  toolName: "Rolo de Gesso",         toolIcon: "🧻", desc: "Perna torta precisando ser engessada!" },
+            { id: 19, symptom: "Soluço Infinito",         color: "#60a5fa", badge: "🫧", part: "aura",  toolName: "Copo d'Água",           toolIcon: "🥛", desc: "Bolhas de soluço pulando a cada segundo!" },
+            { id: 20, symptom: "Desmaio Súbito",          color: "#c084fc", badge: "💫", part: "face",  toolName: "Sais Aromáticos",       toolIcon: "🧪", desc: "Estrelinhas rodando sobre a testa!" }
+        ];
+
+        /**
+         * ============================================================================
+         * 2. SISTEMA DE ÁUDIO SINTETIZADO (WEB AUDIO API - SEM ARQUIVOS EXTERNOS)
+         * ============================================================================
+         */
+        let audioCtx = null;
+        let isMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) audioCtx = new AudioContextClass();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function toggleAudio() {
+            isMuted = !isMuted;
+            document.getElementById('muteBtn').textContent = isMuted ? '🔇' : '🔊';
+        }
+
+        function playSound(type) {
+            if (isMuted || !audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'pickup') {
+                    // Som rápido agudo ao pegar uma ferramenta
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(520, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                } else if (type === 'paper') {
+                    // Som ao abrir a folha de cola
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.linearRampToValueAtTime(450, now + 0.08);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'cure') {
+                    // Som alegre quando cura um problema do paciente
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(523.25, now);       // C5
+                    osc.frequency.setValueAtTime(659.25, now + 0.08);// E5
+                    osc.frequency.setValueAtTime(783.99, now + 0.16);// G5
+                    osc.frequency.setValueAtTime(1046.5, now + 0.24);// C6
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'error') {
+                    // Buzzer grave quando usa o instrumento errado (-5s)
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(160, now);
+                    osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+                    gain.gain.setValueAtTime(0.22, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'nextPatient') {
+                    // Fanfarra de paciente salvo!
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(554.37, now + 0.1);
+                    osc.frequency.setValueAtTime(659.25, now + 0.2);
+                    osc.frequency.setValueAtTime(880, now + 0.3);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.55);
+                    osc.start(now);
+                    osc.stop(now + 0.55);
+                } else if (type === 'heartbeat') {
+                    // Batimento cardíaco nos últimos 15 segundos
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(90, now);
+                    osc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+                    osc.start(now);
+                    osc.stop(now + 0.14);
+                } else if (type === 'powerup') {
+                    // Som vibrante de coleta de Power-up Verde
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } else if (type === 'hazard') {
+                    // Som de alerta de Acidente Hospitalar
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(280, now);
+                    osc.frequency.linearRampToValueAtTime(130, now + 0.22);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                }
+            } catch (e) {
+                // Ignora caso o navegador bloqueie áudio antes de interação
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 3. MAPA DO LABIRINTO DO HOSPITAL (24 COLUNAS x 15 LINHAS DE TILES 40x40px)
+         * ============================================================================
+         * Legenda da Matriz:
+         * 0 = Piso livre (Corredor / Sala onde ferramentas podem aparecer)
+         * 1 = Parede do Hospital (Bloqueia movimento)
+         * 2 = Piso da Emergência (Ao redor da maca, sem spawn de itens para não bagunçar)
+         * 3 = Maca do Paciente (Centro superior)
+         * 4 = Painel / Folha de Consulta ("Manual de Cola")
+         */
+        const TILE_SIZE = 40;
+        const COLS = 24;
+        const ROWS = 15;
+
+        const HOSPITAL_MAP = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,1,0,0,0,1,2,2,3,2,4,1,0,0,0,1,0,0,0,1],
+            [1,0,1,1,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,1,0,1],
+            [1,0,1,0,0,0,0,1,0,0,2,2,2,2,2,0,0,1,0,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,0,1,1,2,2,2,1,1,0,1,1,1,0,1,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,0,1,1,0,1,0,1,1,1,0,1,0,1,1,0,1,1,0,1],
+            [1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,1,1,0,1,1,0,1,0,1,0,1,1,0,1,1,0,1,0,1],
+            [1,0,0,0,1,0,0,0,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1],
+            [1,1,1,0,1,0,1,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+            [1,0,1,1,1,0,1,0,1,1,1,0,0,1,1,1,0,1,0,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        // Rótulos decorativos das salas no chão do hospital para orientar o jogador
+        const ROOM_LABELS = [
+            { text: "EMERGÊNCIA / UTI", x: 12.5 * TILE_SIZE, y: 3.7 * TILE_SIZE, color: "rgba(56, 189, 248, 0.22)" },
+            { text: "FARMÁCIA",         x: 3.0 * TILE_SIZE,  y: 2.0 * TILE_SIZE, color: "rgba(148, 163, 184, 0.18)" },
+            { text: "RAIO-X",           x: 21.0 * TILE_SIZE, y: 2.0 * TILE_SIZE, color: "rgba(148, 163, 184, 0.18)" },
+            { text: "ALMOXARIFADO",     x: 3.5 * TILE_SIZE,  y: 12.0 * TILE_SIZE,color: "rgba(148, 163, 184, 0.18)" },
+            { text: "LABORATÓRIO",      x: 12.0 * TILE_SIZE, y: 11.5 * TILE_SIZE,color: "rgba(148, 163, 184, 0.18)" },
+            { text: "CIRURGIA",         x: 20.5 * TILE_SIZE, y: 12.0 * TILE_SIZE,color: "rgba(148, 163, 184, 0.18)" }
+        ];
+
+        /**
+         * ============================================================================
+         * 4. VARIÁVEIS DE ESTADO DO JOGO, OBSTÁCULOS E POWER-UPS
+         * ============================================================================
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const MAX_PATIENTS = 8;           // Máximo de 8 pacientes para vencer o jogo
+        const MAX_PROBLEMS_CAP = 7;       // A partir do 5º paciente, máximo de 7 problemas
+
+        let gameState = 'START';          // 'START', 'PLAYING', 'GAMEOVER', 'VICTORY'
+        let timeLeft = 60.0;
+        let lastFrameTime = performance.now();
+        let heartbeatTimer = 0;
+
+        // Progresso do Jogador
+        let currentPatientIndex = 1;      // Começa no Paciente #1 e vai até o #8
+        let problemsPerPatient = 3;       // Começa com 3 problemas, máximo 7 a partir do 5º
+        let patientsSavedCount = 0;
+        let totalSymptomsCured = 0;
+        let score = 0;
+
+        // Estado do Paciente Atual
+        let activeProblems = [];          // Lista de objetos do MEDICAL_DATABASE que o paciente tem agora
+        let hasInspectedCurrentPatient = false;
+
+        // Objeto do Jogador (Médico Substituto)
+        const player = {
+            x: 12.5 * TILE_SIZE,
+            y: 3.2 * TILE_SIZE,
+            radius: 13,
+            speed: 235,                   // Velocidade base em pixels/s (maior que a dos NPCs)
+            heldTool: null,               // Guarda o objeto da ferramenta na mão (máx 1)
+            facing: 'up'
+        };
+
+        // Efeitos temporários ativos no jogador (em segundos restantes)
+        const playerEffects = {
+            coffee: 0,    // Café: Velocidade 2x por 5s
+            calmante: 0,  // Calmante: Intangível/Invisível a obstáculos por 8s
+            focus: 0,     // Remédio de Foco: Destaca ferramentas necessárias por 10s
+            confused: 0,  // Nuvem Tóxica: Controles invertidos por 5s
+            slow: 0       // Frasco com Vírus: Lentidão (50% velocidade) por 5s
+        };
+
+        // Coordenadas fixas da Maca do Paciente e da Folha de Consulta baseadas na matriz
+        const bedPosition = { x: 12.5 * TILE_SIZE, y: 1.5 * TILE_SIZE };
+        const manualPosition = { x: 14.5 * TILE_SIZE, y: 1.5 * TILE_SIZE };
+
+        // Lista dos 20 itens espalhados no chão do labirinto: { x, y, toolData }
+        let floorTools = [];
+
+        // OBSTÁCULO 1: Médicos/Enfermeiros vagando pelo mapa (Contorno Amarelo)
+        let roamingNPCs = [];
+
+        // OBSTÁCULO 2: Acidentes hospitalares temporários (Contorno Vermelho, duram 10s)
+        let hospitalAccidents = [];
+
+        // POWER-UPS: Sempre 3 ativos no mapa (Contorno Verde, duram 10s ou renascem ao coletar)
+        let activePowerUps = [];
+
+        // Definições de tipos de Acidentes e Power-Ups
+        const ACCIDENT_TYPES = [
+            {
+                type: 'TOXIC',
+                name: 'Nuvem Tóxica',
+                icon: '☣️',
+                desc: 'Inverte controles (5s)'
+            },
+            {
+                type: 'VOLATILE',
+                name: 'Composto Volátil',
+                icon: '💥',
+                desc: 'Explode e tranca passagem (8s)'
+            },
+            {
+                type: 'VIRUS',
+                name: 'Frasco com Vírus',
+                icon: '🦠',
+                desc: 'Deixa mais lento (5s)'
+            }
+        ];
+
+        const POWERUP_TYPES = [
+            {
+                type: 'COFFEE',
+                name: 'Café Expresso',
+                icon: '☕',
+                desc: 'Velocidade 2x (5s)'
+            },
+            {
+                type: 'CALMANTE',
+                name: 'Calmante',
+                icon: '💊',
+                desc: 'Intangível a obstáculos (8s)'
+            },
+            {
+                type: 'FOCUS',
+                name: 'Remédio de Foco',
+                icon: '🧠',
+                desc: 'Destaca itens de cura (10s)'
+            }
+        ];
+
+        // Textos flutuantes de feedback (+CURADO!, -5s ERRO!, etc.)
+        let floatingTexts = [];
+
+        // Controles de Teclado e Touch
+        const keys = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+
+        /**
+         * ============================================================================
+         * 5. INICIALIZAÇÃO DA PARTIDA, PACIENTES, NPCS, ACIDENTES E POWER-UPS
+         * ============================================================================
+         */
+        function getProblemsForPatient(patientNumber) {
+            // Paciente 1 = 3, P2 = 4, P3 = 5, P4 = 6, e do P5 ao P8 trava em 7 problemas!
+            return Math.min(MAX_PROBLEMS_CAP, 2 + patientNumber);
+        }
+
+        function getNPCCountForPatient(patientNumber) {
+            // P1 e P2 = 0 | P3 e P4 = 2 | P5 e P6 = 3 | P7 e P8 = 4 médicos/enfermeiros
+            if (patientNumber < 3) return 0;
+            if (patientNumber < 5) return 2;
+            if (patientNumber < 7) return 3;
+            return 4;
+        }
+
+        function getAccidentCountForPatient(patientNumber) {
+            // Começa no Paciente 2 com 3 acidentes e aumenta +1 a cada paciente salvo
+            if (patientNumber < 2) return 0;
+            return patientNumber + 1; // P2=3, P3=4, P4=5, P5=6, P6=7, P7=8, P8=9
+        }
+
+        // Encontra uma célula de corredor (valor 0) livre para posicionar acidentes, power-ups ou NPCs
+        function getRandomCorridorPosition(existingEntities = [], minPlayerDist = 75) {
+            const candidates = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (HOSPITAL_MAP[r][c] === 0) {
+                        const px = (c + 0.5) * TILE_SIZE;
+                        const py = (r + 0.5) * TILE_SIZE;
+                        const distToPlayer = Math.hypot(px - player.x, py - player.y);
+                        if (distToPlayer >= minPlayerDist) {
+                            const tooClose = existingEntities.some(e => Math.hypot(px - e.x, py - e.y) < 36);
+                            if (!tooClose) {
+                                candidates.push({ x: px, y: py });
+                            }
+                        }
+                    }
+                }
+            }
+            if (candidates.length === 0) {
+                return { x: 3.5 * TILE_SIZE, y: 11.5 * TILE_SIZE };
+            }
+            return candidates[Math.floor(Math.random() * candidates.length)];
+        }
+
+        function createRandomAccident(existingList = []) {
+            const template = ACCIDENT_TYPES[Math.floor(Math.random() * ACCIDENT_TYPES.length)];
+            const pos = getRandomCorridorPosition([...existingList, ...activePowerUps], 85);
+            return {
+                type: template.type,
+                name: template.name,
+                icon: template.icon,
+                x: pos.x,
+                y: pos.y,
+                radius: 16,
+                // Composto Volátil já explode e tranca a passagem por 8 segundos dentro do ciclo de 10s
+                timer: 10.0,
+                maxTimer: 10.0
+            };
+        }
+
+        function createRandomPowerUp(existingList = []) {
+            const template = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+            const pos = getRandomCorridorPosition([...existingList, ...hospitalAccidents], 60);
+            return {
+                type: template.type,
+                name: template.name,
+                icon: template.icon,
+                x: pos.x,
+                y: pos.y,
+                radius: 15,
+                timer: 10.0,
+                maxTimer: 10.0
+            };
+        }
+
+        function spawnRoamingNPCs(count) {
+            roamingNPCs = [];
+            const icons = ['👨‍⚕️', '👩‍⚕️', '🧑‍⚕️', '👨‍⚕️'];
+            const dirs = [
+                { vx: 1, vy: 0 },
+                { vx: -1, vy: 0 },
+                { vx: 0, vy: 1 },
+                { vx: 0, vy: -1 }
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const pos = getRandomCorridorPosition(roamingNPCs, 110);
+                const dir = dirs[Math.floor(Math.random() * dirs.length)];
+                roamingNPCs.push({
+                    x: pos.x,
+                    y: pos.y,
+                    radius: 14,
+                    speed: 145, // Mais lento que o jogador (235) para permitir desvio de rota
+                    vx: dir.vx,
+                    vy: dir.vy,
+                    icon: icons[i % icons.length],
+                    changeDirTimer: 1.5 + Math.random() * 2.0
+                });
+            }
+        }
+
+        function startGame() {
+            initAudio();
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('endScreen').classList.add('hidden');
+            closeManual();
+
+            currentPatientIndex = 1;
+            problemsPerPatient = getProblemsForPatient(1);
+            patientsSavedCount = 0;
+            totalSymptomsCured = 0;
+            score = 0;
+
+            // Reseta efeitos ativos no jogador
+            playerEffects.coffee = 0;
+            playerEffects.calmante = 0;
+            playerEffects.focus = 0;
+            playerEffects.confused = 0;
+            playerEffects.slow = 0;
+
+            setupPatientRound(problemsPerPatient);
+            gameState = 'PLAYING';
+            lastFrameTime = performance.now();
+        }
+
+        // Configura um novo paciente, espalha as 20 ferramentas, NPCs, Acidentes e Power-Ups
+        function setupPatientRound(numProblems) {
+            timeLeft = 60.0; // Sempre 60 segundos de vida!
+            player.x = 12.5 * TILE_SIZE;
+            player.y = 3.2 * TILE_SIZE;
+            player.heldTool = null;
+            hasInspectedCurrentPatient = false;
+
+            // 1. Sorteia 'numProblems' condições médicas diferentes dentre as 20
+            const shuffledConditions = [...MEDICAL_DATABASE].sort(() => Math.random() - 0.5);
+            activeProblems = shuffledConditions.slice(0, numProblems);
+
+            // 2. Coleta todos os pisos livres (valor 0 na matriz) para espalhar os 20 aparelhos
+            const validFloorTiles = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (HOSPITAL_MAP[r][c] === 0) {
+                        validFloorTiles.push({ r, c });
+                    }
+                }
+            }
+
+            // Embaralha os pisos livres e posiciona todas as 20 ferramentas no mapa
+            validFloorTiles.sort(() => Math.random() - 0.5);
+            floorTools = MEDICAL_DATABASE.map((toolData, idx) => {
+                const tile = validFloorTiles[idx];
+                return {
+                    x: (tile.c + 0.5) * TILE_SIZE,
+                    y: (tile.r + 0.5) * TILE_SIZE,
+                    toolData: toolData
+                };
+            });
+
+            // 3. Configura Médicos/Enfermeiros vagando (Contorno Amarelo)
+            const npcCount = getNPCCountForPatient(currentPatientIndex);
+            spawnRoamingNPCs(npcCount);
+
+            // 4. Configura Acidentes Hospitalares (Contorno Vermelho) a partir do Paciente 2
+            const accidentCount = getAccidentCountForPatient(currentPatientIndex);
+            hospitalAccidents = [];
+            for (let i = 0; i < accidentCount; i++) {
+                const acc = createRandomAccident(hospitalAccidents);
+                // Desfasa levemente os timers iniciais para não trocarem todos no mesmo milissegundo
+                acc.timer = 10.0;
+                hospitalAccidents.push(acc);
+            }
+
+            // 5. Configura os 3 Power-Ups simultâneos (Contorno Verde) desde o Paciente 1
+            activePowerUps = [];
+            for (let i = 0; i < 3; i++) {
+                const pu = createRandomPowerUp(activePowerUps);
+                pu.timer = 10.0;
+                activePowerUps.push(pu);
+            }
+
+            updateHUD();
+        }
+
+        /**
+         * ============================================================================
+         * 6. SISTEMA DE INTERAÇÃO (TECLA 'E' OU 'ESPAÇO')
+         * ============================================================================
+         */
+        function getClosestInteractable() {
+            const distToBed = Math.hypot(player.x - bedPosition.x, player.y - bedPosition.y);
+            const distToManual = Math.hypot(player.x - manualPosition.x, player.y - manualPosition.y);
+
+            // 1. Prioridade se estiver colado no Painel da Folha de Consulta
+            if (distToManual < 54) {
+                return { type: 'MANUAL', dist: distToManual };
+            }
+
+            // 2. Se estiver perto da Maca do Paciente
+            if (distToBed < 62) {
+                return { type: 'BED', dist: distToBed };
+            }
+
+            // 3. Verifica se há alguma ferramenta médica no chão por perto
+            let closestToolIndex = -1;
+            let minToolDist = 42;
+            for (let i = 0; i < floorTools.length; i++) {
+                const d = Math.hypot(player.x - floorTools[i].x, player.y - floorTools[i].y);
+                if (d < minToolDist) {
+                    minToolDist = d;
+                    closestToolIndex = i;
+                }
+            }
+
+            if (closestToolIndex !== -1) {
+                return { type: 'TOOL', index: closestToolIndex, item: floorTools[closestToolIndex] };
+            }
+
+            return null;
+        }
+
+        function handleInteractAction() {
+            if (gameState !== 'PLAYING') return;
+
+            // Se a Folha de Cola estiver aberta, apertar E ou Espaço fecha a folha
+            const manualModal = document.getElementById('manualModal');
+            if (!manualModal.classList.contains('hidden')) {
+                closeManual();
+                return;
+            }
+
+            const target = getClosestInteractable();
+            if (!target) return;
+
+            // INTERAÇÃO A: ABRIR A FOLHA DE COLA
+            if (target.type === 'MANUAL') {
+                openManual();
+                return;
+            }
+
+            // INTERAÇÃO B: PEGAR OU TROCAR FERRAMENTA NO CHÃO (MÁX 1 NA MÃO)
+            if (target.type === 'TOOL') {
+                const floorItem = floorTools[target.index];
+                const pickedTool = floorItem.toolData;
+
+                if (player.heldTool === null) {
+                    // Mão vazia: pega o item do chão
+                    player.heldTool = pickedTool;
+                    floorTools.splice(target.index, 1);
+                } else {
+                    // Já tem 1 item na mão: troca pelo do chão
+                    const previousTool = player.heldTool;
+                    player.heldTool = pickedTool;
+                    floorTools[target.index].toolData = previousTool;
+                }
+
+                playSound('pickup');
+                addFloatingText(player.x, player.y - 20, `Pegou: ${pickedTool.toolIcon} ${pickedTool.toolName}`, '#38bdf8');
+                updateHUD();
+                return;
+            }
+
+            // INTERAÇÃO C: USAR FERRAMENTA NO PACIENTE OU EXAMINAR
+            if (target.type === 'BED') {
+                hasInspectedCurrentPatient = true;
+
+                if (!player.heldTool) {
+                    playSound('paper');
+                    addFloatingText(bedPosition.x, bedPosition.y - 20, "🔍 Paciente Examinado! Pegue um item!", "#facc15");
+                    updateHUD();
+                    return;
+                }
+
+                // Verifica se o instrumento na mão resolve algum dos problemas ativos do paciente
+                const matchIndex = activeProblems.findIndex(prob => prob.id === player.heldTool.id);
+
+                if (matchIndex !== -1) {
+                    // ACERTOU A FERRAMENTA!
+                    const curedProblem = activeProblems[matchIndex];
+                    activeProblems.splice(matchIndex, 1);
+                    player.heldTool = null; // Ferramenta foi consumida no tratamento
+                    totalSymptomsCured++;
+                    score += 150 + Math.floor(timeLeft * 2);
+
+                    playSound('cure');
+                    addFloatingText(bedPosition.x, bedPosition.y - 25, `✅ CURADO: ${curedProblem.symptom}!`, '#4ade80');
+
+                    // Verifica se todos os problemas deste paciente foram resolvidos
+                    if (activeProblems.length === 0) {
+                        patientsSavedCount++;
+                        score += 500;
+                        playSound('nextPatient');
+
+                        // Se salvou o 8º paciente, VENCEU O JOGO!
+                        if (currentPatientIndex >= MAX_PATIENTS) {
+                            triggerEndGame(true);
+                            return;
+                        }
+
+                        // Avança para o próximo paciente (máximo de 7 problemas a partir do 5º)
+                        currentPatientIndex++;
+                        problemsPerPatient = getProblemsForPatient(currentPatientIndex);
+                        addFloatingText(
+                            player.x,
+                            player.y - 35,
+                            `🎉 PACIENTE SALVO! PRÓXIMO (#${currentPatientIndex}/8): ${problemsPerPatient} PROBLEMAS!`,
+                            '#facc15'
+                        );
+                        setupPatientRound(problemsPerPatient);
+                    } else {
+                        updateHUD();
+                    }
+                } else {
+                    // ERROU A FERRAMENTA! Penalidade de -5 segundos!
+                    timeLeft = Math.max(0, timeLeft - 5.0);
+                    playSound('error');
+                    addFloatingText(bedPosition.x, bedPosition.y - 25, `❌ ITEM ERRADO! -5.0s`, '#f43f5e');
+
+                    // Efeito de tremor na tela
+                    const container = document.getElementById('gameContainer');
+                    container.classList.remove('screen-shake');
+                    void container.offsetWidth;
+                    container.classList.add('screen-shake');
+
+                    updateHUD();
+                }
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 7. POP-UP DA FOLHA DE COLA (PAINEL DE CONSULTA)
+         * ============================================================================
+         */
+        function openManual() {
+            playSound('paper');
+            const modal = document.getElementById('manualModal');
+            const searchInput = document.getElementById('manualSearch');
+            searchInput.value = '';
+            renderManualList('');
+            modal.classList.remove('hidden');
+        }
+
+        function closeManual() {
+            document.getElementById('manualModal').classList.add('hidden');
+        }
+
+        function toggleManual() {
+            const modal = document.getElementById('manualModal');
+            if (!modal.classList.contains('hidden')) {
+                closeManual();
+            } else {
+                const distToManual = Math.hypot(player.x - manualPosition.x, player.y - manualPosition.y);
+                if (distToManual < 90) {
+                    openManual();
+                } else {
+                    addFloatingText(player.x, player.y - 20, "Vá até o Painel 📋 ao lado da maca!", "#fbbf24");
+                }
+            }
+        }
+
+        function renderManualList(filterText = '') {
+            const grid = document.getElementById('manualGrid');
+            const query = filterText.trim().toLowerCase();
+
+            const filtered = MEDICAL_DATABASE.filter(item =>
+                item.symptom.toLowerCase().includes(query) ||
+                item.toolName.toLowerCase().includes(query) ||
+                item.desc.toLowerCase().includes(query)
+            );
+
+            grid.innerHTML = filtered.map(item => {
+                // Destaca na folha caso o jogador já tenha observado esse sintoma no paciente atual
+                const isObservedOnPatient = hasInspectedCurrentPatient && activeProblems.some(p => p.id === item.id);
+                const borderClass = isObservedOnPatient
+                    ? 'border-2 border-rose-600 bg-rose-50 shadow-md ring-2 ring-rose-400/50'
+                    : 'border border-amber-300 bg-white';
+
+                return `
+                    <div class="${borderClass} rounded-xl p-2.5 flex items-center justify-between gap-2 transition">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0 font-bold shadow-sm" style="background:${item.color}25; border: 2px solid ${item.color}">
+                                ${item.badge}
+                            </span>
+                            <div class="min-w-0">
+                                <div class="font-extrabold text-xs sm:text-sm text-slate-900 truncate flex items-center gap-1">
+                                    ${item.symptom}
+                                    ${isObservedOnPatient ? '<span class="bg-rose-600 text-white text-[10px] px-1.5 py-0.2 rounded-full">PACIENTE!</span>' : ''}
+                                </div>
+                                <div class="text-[11px] text-slate-500 truncate">${item.desc}</div>
+                            </div>
+                        </div>
+                        <div class="bg-amber-100 border border-amber-400 px-2.5 py-1.5 rounded-lg text-right shrink-0">
+                            <div class="text-[10px] font-bold uppercase text-amber-800">Usar Item</div>
+                            <div class="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1">
+                                <span>${item.toolIcon}</span>
+                                <span>${item.toolName}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * ============================================================================
+         * 8. ATUALIZAÇÃO DO HUD E INTERFACE
+         * ============================================================================
+         */
+        function updateHUD() {
+            // Paciente (1 a 8) e Problemas
+            document.getElementById('patientNumberDisplay').textContent = `Paciente #${currentPatientIndex}/${MAX_PATIENTS}`;
+            document.getElementById('problemsCountDisplay').textContent = `${activeProblems.length}/${problemsPerPatient}`;
+            document.getElementById('scoreDisplay').textContent = `${score} pts`;
+
+            // Item na mão
+            const heldIconEl = document.getElementById('heldItemIcon');
+            const heldNameEl = document.getElementById('heldItemName');
+            if (player.heldTool) {
+                heldIconEl.textContent = player.heldTool.toolIcon;
+                heldNameEl.textContent = player.heldTool.toolName;
+                heldNameEl.className = "text-sm sm:text-base font-extrabold text-amber-300 truncate";
+            } else {
+                heldIconEl.textContent = "✋";
+                heldNameEl.textContent = "Mãos Vazias";
+                heldNameEl.className = "text-sm sm:text-base font-bold text-slate-400 truncate";
+            }
+
+            // Resumo de sintomas observados no topo
+            const observedHud = document.getElementById('observedSymptomsHud');
+            if (!hasInspectedCurrentPatient) {
+                observedHud.innerHTML = `<span class="text-amber-300 animate-pulse">Chegue perto da maca p/ ver!</span>`;
+            } else {
+                observedHud.innerHTML = activeProblems.map(p => `${p.badge} ${p.symptom}`).join(' • ');
+            }
+
+            updateEffectsHUD();
+        }
+
+        function updateEffectsHUD() {
+            const container = document.getElementById('activeEffectsHud');
+            if (!container) return;
+
+            const badges = [];
+            if (playerEffects.coffee > 0) {
+                badges.push(`<span class="bg-emerald-950/90 border border-emerald-400 text-emerald-300 px-2 py-0.5 rounded-md font-bold">☕ Velocidade 2x (${playerEffects.coffee.toFixed(1)}s)</span>`);
+            }
+            if (playerEffects.calmante > 0) {
+                badges.push(`<span class="bg-emerald-950/90 border border-emerald-400 text-emerald-300 px-2 py-0.5 rounded-md font-bold">💊 Intangível (${playerEffects.calmante.toFixed(1)}s)</span>`);
+            }
+            if (playerEffects.focus > 0) {
+                badges.push(`<span class="bg-emerald-950/90 border border-emerald-400 text-emerald-300 px-2 py-0.5 rounded-md font-bold">🧠 Foco de Cura (${playerEffects.focus.toFixed(1)}s)</span>`);
+            }
+            if (playerEffects.confused > 0) {
+                badges.push(`<span class="bg-rose-950/90 border border-rose-500 text-rose-300 px-2 py-0.5 rounded-md font-bold animate-pulse">☣️ Controles Invertidos (${playerEffects.confused.toFixed(1)}s)</span>`);
+            }
+            if (playerEffects.slow > 0) {
+                badges.push(`<span class="bg-rose-950/90 border border-rose-500 text-rose-300 px-2 py-0.5 rounded-md font-bold">🦠 Vírus Lento (${playerEffects.slow.toFixed(1)}s)</span>`);
+            }
+
+            if (badges.length === 0) {
+                const npcCount = getNPCCountForPatient(currentPatientIndex);
+                const accCount = getAccidentCountForPatient(currentPatientIndex);
+                container.innerHTML = `<span class="text-slate-400 font-medium">Mapa atual: <b class="text-emerald-400">3 Power-ups</b> • <b class="text-amber-300">${npcCount} Médicos/Enf.</b> • <b class="text-rose-400">${accCount} Acidentes</b></span>`;
+            } else {
+                container.innerHTML = badges.join('');
+            }
+        }
+
+        function addFloatingText(x, y, text, color = '#ffffff') {
+            floatingTexts.push({
+                x,
+                y,
+                text,
+                color,
+                alpha: 1.0,
+                life: 1.4
+            });
+        }
+
+        function triggerEndGame(isVictory) {
+            gameState = isVictory ? 'VICTORY' : 'GAMEOVER';
+            closeManual();
+
+            const endScreen = document.getElementById('endScreen');
+            const endIcon = document.getElementById('endIcon');
+            const endTitle = document.getElementById('endTitle');
+            const endReason = document.getElementById('endReason');
+
+            if (isVictory) {
+                endIcon.textContent = "🏆";
+                endTitle.textContent = "PLANTÃO CONCLUÍDO COM SUCESSO!";
+                endTitle.className = "text-3xl sm:text-4xl font-black text-emerald-400 mb-2";
+                endReason.textContent = "Inacreditável! Mesmo sem diploma e desviando de médicos, explosões, vírus e nuvens tóxicas, você salvou todos os 8 pacientes do hospital!";
+            } else {
+                endIcon.textContent = "🚨";
+                endTitle.textContent = "OS 60 SEGUNDOS ACABARAM!";
+                endTitle.className = "text-3xl sm:text-4xl font-black text-rose-500 mb-2";
+                endReason.textContent = `O tempo do Paciente #${currentPatientIndex}/8 zerou antes de você resolver todos os problemas dele!`;
+            }
+
+            document.getElementById('finalPatientsSaved').textContent = `${patientsSavedCount}/${MAX_PATIENTS}`;
+            document.getElementById('finalSymptomsCured').textContent = totalSymptomsCured;
+            document.getElementById('finalScore').textContent = score;
+
+            endScreen.classList.remove('hidden');
+        }
+
+        /**
+         * ============================================================================
+         * 9. FÍSICA, MOVIMENTAÇÃO, NPCS, ACIDENTES E POWER-UPS
+         * ============================================================================
+         */
+        function isWallAt(px, py, radius, checkVolatileBlockade = false) {
+            // Verifica os 4 cantos da caixa delimitadora
+            const points = [
+                { x: px - radius, y: py - radius },
+                { x: px + radius, y: py - radius },
+                { x: px - radius, y: py + radius },
+                { x: px + radius, y: py + radius }
+            ];
+
+            for (const pt of points) {
+                const col = Math.floor(pt.x / TILE_SIZE);
+                const row = Math.floor(pt.y / TILE_SIZE);
+                if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return true;
+                const tile = HOSPITAL_MAP[row][col];
+                // Parede (1), Maca (3) e Painel (4) são sólidos
+                if (tile === 1 || tile === 3 || tile === 4) {
+                    return true;
+                }
+            }
+
+            // Se checkVolatileBlockade estiver ativo e o jogador NÃO estiver com Calmante,
+            // Compostos Voláteis explodidos (últimos 8s dos 10s de vida) trancam a passagem!
+            if (checkVolatileBlockade && playerEffects.calmante <= 0) {
+                for (const acc of hospitalAccidents) {
+                    if (acc.type === 'VOLATILE' && acc.timer <= 8.0) {
+                        const dist = Math.hypot(px - acc.x, py - acc.y);
+                        if (dist < radius + acc.radius) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        function updateGame(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            // 1. Atualiza o Cronômetro de 60 Segundos
+            timeLeft -= dt;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                triggerEndGame(false);
+                return;
+            }
+
+            // Formatação e alerta visual quando faltam menos de 15 segundos
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timerBox = document.getElementById('timerBox');
+            timerDisplay.textContent = `${timeLeft.toFixed(1)}s`;
+
+            if (timeLeft <= 15.0) {
+                timerBox.classList.add('timer-urgent');
+                timerDisplay.className = "font-mono-timer text-2xl sm:text-3xl font-extrabold text-rose-400 leading-none";
+                heartbeatTimer -= dt;
+                if (heartbeatTimer <= 0) {
+                    playSound('heartbeat');
+                    heartbeatTimer = timeLeft < 7 ? 0.45 : 0.8;
+                }
+            } else {
+                timerBox.classList.remove('timer-urgent');
+                timerDisplay.className = "font-mono-timer text-2xl sm:text-3xl font-extrabold text-emerald-400 leading-none";
+            }
+
+            // 2. Atualiza os Timers dos Efeitos do Jogador (Buffs e Debuffs)
+            for (const key of Object.keys(playerEffects)) {
+                if (playerEffects[key] > 0) {
+                    playerEffects[key] = Math.max(0, playerEffects[key] - dt);
+                }
+            }
+            updateEffectsHUD();
+
+            // 3. Movimentação do Médico (apenas se a folha de consulta não estiver aberta)
+            const isManualOpen = !document.getElementById('manualModal').classList.contains('hidden');
+            if (!isManualOpen) {
+                let dx = 0;
+                let dy = 0;
+                if (keys.up) dy -= 1;
+                if (keys.down) dy += 1;
+                if (keys.left) dx -= 1;
+                if (keys.right) dx += 1;
+
+                // Se estiver sob efeito da Nuvem Tóxica (e sem Calmante), INVERTE os controles!
+                if (playerEffects.confused > 0 && playerEffects.calmante <= 0) {
+                    dx = -dx;
+                    dy = -dy;
+                }
+
+                // Normaliza velocidade na diagonal
+                if (dx !== 0 && dy !== 0) {
+                    const inv = 1 / Math.sqrt(2);
+                    dx *= inv;
+                    dy *= inv;
+                }
+
+                // Calcula velocidade efetiva (Café dobra, Vírus reduz pela metade)
+                let effectiveSpeed = player.speed;
+                if (playerEffects.coffee > 0) effectiveSpeed *= 2.0;
+                if (playerEffects.slow > 0 && playerEffects.calmante <= 0) effectiveSpeed *= 0.5;
+
+                if (dx !== 0 || dy !== 0) {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        player.facing = dx > 0 ? 'right' : 'left';
+                    } else {
+                        player.facing = dy > 0 ? 'down' : 'up';
+                    }
+
+                    const nextX = player.x + dx * effectiveSpeed * dt;
+                    const nextY = player.y + dy * effectiveSpeed * dt;
+
+                    // Movimento separado nos eixos X e Y (verifica paredes + bloqueio de Composto Volátil)
+                    if (!isWallAt(nextX, player.y, player.radius, true)) {
+                        player.x = nextX;
+                    }
+                    if (!isWallAt(player.x, nextY, player.radius, true)) {
+                        player.y = nextY;
+                    }
+                }
+            }
+
+            // 4. Atualiza os Médicos/Enfermeiros (Contorno Amarelo) e Colisão/Empurrão
+            updateRoamingNPCs(dt);
+
+            // 5. Atualiza os Acidentes Hospitalares (Contorno Vermelho, ciclo de 10s)
+            updateHospitalAccidents(dt);
+
+            // 6. Atualiza os 3 Power-Ups (Contorno Verde, ciclo de 10s ou coleta imediata)
+            updatePowerUps(dt);
+
+            // 7. Verifica proximidade da maca para abrir automaticamente o Diagnóstico Visual
+            const distToBed = Math.hypot(player.x - bedPosition.x, player.y - bedPosition.y);
+            const inspectCard = document.getElementById('patientInspectCard');
+
+            if (distToBed < 85) {
+                if (!hasInspectedCurrentPatient) {
+                    hasInspectedCurrentPatient = true;
+                    updateHUD();
+                }
+                inspectCard.classList.remove('hidden');
+                const listEl = document.getElementById('patientSymptomsList');
+                listEl.innerHTML = activeProblems.map(p => `
+                    <li class="flex items-center gap-2 bg-slate-800/90 px-2.5 py-1.5 rounded-lg border-l-4" style="border-color:${p.color}">
+                        <span class="text-base">${p.badge}</span>
+                        <div>
+                            <div class="text-white font-bold leading-tight">${p.symptom}</div>
+                            <div class="text-[10px] text-slate-400">${p.desc}</div>
+                        </div>
+                    </li>
+                `).join('');
+            } else {
+                inspectCard.classList.add('hidden');
+            }
+
+            // 8. Atualiza o Prompt de Interação na parte inferior
+            const target = getClosestInteractable();
+            const promptEl = document.getElementById('interactionPrompt');
+            const promptText = document.getElementById('interactionText');
+
+            if (target && !isManualOpen) {
+                promptEl.classList.remove('hidden');
+                if (target.type === 'MANUAL') {
+                    promptText.textContent = "Abrir Folha de Cola 📋 (Ver quais itens curam o paciente)";
+                } else if (target.type === 'BED') {
+                    if (player.heldTool) {
+                        promptText.textContent = `Usar ${player.heldTool.toolIcon} ${player.heldTool.toolName} no Paciente`;
+                    } else {
+                        promptText.textContent = "Examinar Paciente (Traga uma ferramenta para curar!)";
+                    }
+                } else if (target.type === 'TOOL') {
+                    const t = target.item.toolData;
+                    if (player.heldTool) {
+                        promptText.textContent = `Trocar por ${t.toolIcon} ${t.toolName}`;
+                    } else {
+                        promptText.textContent = `Pegar ${t.toolIcon} ${t.toolName}`;
+                    }
+                }
+            } else {
+                promptEl.classList.add('hidden');
+            }
+
+            // 9. Atualiza textos flutuantes
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                floatingTexts[i].y -= 28 * dt;
+                floatingTexts[i].life -= dt;
+                floatingTexts[i].alpha = Math.max(0, floatingTexts[i].life / 1.4);
+                if (floatingTexts[i].life <= 0) {
+                    floatingTexts.splice(i, 1);
+                }
+            }
+        }
+
+        // Movimentação e Empurrão dos Médicos/Enfermeiros (Contorno Amarelo)
+        function updateRoamingNPCs(dt) {
+            const directions = [
+                { vx: 1, vy: 0 },
+                { vx: -1, vy: 0 },
+                { vx: 0, vy: 1 },
+                { vx: 0, vy: -1 }
+            ];
+
+            for (const npc of roamingNPCs) {
+                npc.changeDirTimer -= dt;
+
+                const nextX = npc.x + npc.vx * npc.speed * dt;
+                const nextY = npc.y + npc.vy * npc.speed * dt;
+
+                // Evita que os NPCs entrem na área da maca (tile !== 0) ou batam nas paredes
+                const col = Math.floor(nextX / TILE_SIZE);
+                const row = Math.floor(nextY / TILE_SIZE);
+                const tileAtNext = (row >= 0 && row < ROWS && col >= 0 && col < COLS) ? HOSPITAL_MAP[row][col] : 1;
+
+                if (isWallAt(nextX, nextY, npc.radius, false) || tileAtNext !== 0 || npc.changeDirTimer <= 0) {
+                    // Escolhe uma nova direção livre no corredor
+                    const validDirs = directions.filter(d => {
+                        const testX = npc.x + d.vx * TILE_SIZE * 0.6;
+                        const testY = npc.y + d.vy * TILE_SIZE * 0.6;
+                        const tc = Math.floor(testX / TILE_SIZE);
+                        const tr = Math.floor(testY / TILE_SIZE);
+                        return tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS &&
+                               HOSPITAL_MAP[tr][tc] === 0 &&
+                               !isWallAt(testX, testY, npc.radius, false);
+                    });
+
+                    if (validDirs.length > 0) {
+                        const chosen = validDirs[Math.floor(Math.random() * validDirs.length)];
+                        npc.vx = chosen.vx;
+                        npc.vy = chosen.vy;
+                    } else {
+                        npc.vx = -npc.vx;
+                        npc.vy = -npc.vy;
+                    }
+                    npc.changeDirTimer = 1.4 + Math.random() * 2.2;
+                } else {
+                    npc.x = nextX;
+                    npc.y = nextY;
+                }
+
+                // Colisão física com o Jogador (tapa o corredor e empurra se não tiver Calmante)
+                if (playerEffects.calmante <= 0) {
+                    const dx = player.x - npc.x;
+                    const dy = player.y - npc.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minDist = player.radius + npc.radius + 2;
+
+                    if (dist < minDist && dist > 0.001) {
+                        const overlap = (minDist - dist) + 1.5;
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+
+                        // Empurra o jogador na direção do impacto + direção de caminhada do NPC
+                        const pushX = player.x + (nx * overlap) + (npc.vx * npc.speed * dt * 0.7);
+                        const pushY = player.y + (ny * overlap) + (npc.vy * npc.speed * dt * 0.7);
+
+                        if (!isWallAt(pushX, player.y, player.radius, true)) {
+                            player.x = pushX;
+                        }
+                        if (!isWallAt(player.x, pushY, player.radius, true)) {
+                            player.y = pushY;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ciclo de 10 segundos e colisões dos Acidentes Hospitalares (Contorno Vermelho)
+        function updateHospitalAccidents(dt) {
+            for (let i = 0; i < hospitalAccidents.length; i++) {
+                const acc = hospitalAccidents[i];
+                const prevTimer = acc.timer;
+                acc.timer -= dt;
+
+                // Se completou 10 segundos no mapa, some e outro acidente aparece em outro lugar!
+                if (acc.timer <= 0) {
+                    hospitalAccidents[i] = createRandomAccident(hospitalAccidents);
+                    continue;
+                }
+
+                // Se for um Composto Volátil que acabou de explodir aos 8.0s restantes e o jogador estava em cima, empurra-o para fora
+                if (acc.type === 'VOLATILE' && prevTimer > 8.0 && acc.timer <= 8.0) {
+                    playSound('hazard');
+                    addFloatingText(acc.x, acc.y - 18, "💥 EXPLODIU! Passagem Trancada (8s)!", "#ef4444");
+                }
+
+                // Verifica contato do jogador com o acidente (se não estiver intangível pelo Calmante)
+                if (playerEffects.calmante <= 0) {
+                    const dist = Math.hypot(player.x - acc.x, player.y - acc.y);
+                    const hitDist = player.radius + acc.radius;
+
+                    if (dist < hitDist) {
+                        if (acc.type === 'TOXIC') {
+                            if (playerEffects.confused <= 4.3) {
+                                playSound('hazard');
+                                addFloatingText(player.x, player.y - 24, "☣️ NUVEM TÓXICA! Controles Invertidos (5s)!", "#f43f5e");
+                            }
+                            playerEffects.confused = 5.0;
+                        } else if (acc.type === 'VIRUS') {
+                            if (playerEffects.slow <= 4.3) {
+                                playSound('hazard');
+                                addFloatingText(player.x, player.y - 24, "🦠 VÍRUS EXPOSTO! Lentidão (5s)!", "#f43f5e");
+                            }
+                            playerEffects.slow = 5.0;
+                        } else if (acc.type === 'VOLATILE' && acc.timer <= 8.0 && dist > 0.001) {
+                            // Empurra o jogador para fora caso encoste na barricada da explosão
+                            const nx = (player.x - acc.x) / dist;
+                            const ny = (player.y - acc.y) / dist;
+                            const pushX = player.x + nx * (hitDist - dist + 2);
+                            const pushY = player.y + ny * (hitDist - dist + 2);
+                            if (!isWallAt(pushX, player.y, player.radius, false)) player.x = pushX;
+                            if (!isWallAt(player.x, pushY, player.radius, false)) player.y = pushY;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ciclo de 10 segundos e coleta em cadeia dos 3 Power-Ups (Contorno Verde)
+        function updatePowerUps(dt) {
+            for (let i = 0; i < activePowerUps.length; i++) {
+                const pu = activePowerUps[i];
+                pu.timer -= dt;
+
+                // Se passaram 10 segundos sem coleta, some e aparece outro em outro ponto do mapa
+                if (pu.timer <= 0) {
+                    activePowerUps[i] = createRandomPowerUp(activePowerUps);
+                    continue;
+                }
+
+                // Coleta imediata ao passar por cima
+                const dist = Math.hypot(player.x - pu.x, player.y - pu.y);
+                if (dist < player.radius + pu.radius) {
+                    playSound('powerup');
+
+                    if (pu.type === 'COFFEE') {
+                        playerEffects.coffee = 5.0;
+                        addFloatingText(player.x, player.y - 25, "☕ CAFÉ! Velocidade 2x (5s)!", "#4ade80");
+                    } else if (pu.type === 'CALMANTE') {
+                        playerEffects.calmante = 8.0;
+                        playerEffects.confused = 0;
+                        playerEffects.slow = 0;
+                        addFloatingText(player.x, player.y - 25, "💊 CALMANTE! Intangível a Obstáculos (8s)!", "#4ade80");
+                    } else if (pu.type === 'FOCUS') {
+                        playerEffects.focus = 10.0;
+                        addFloatingText(player.x, player.y - 25, "🧠 FOCO ATIVO! Itens de Cura Destacados (10s)!", "#4ade80");
+                    }
+
+                    // Assim que coleta, outro power-up aparece NA MESMA HORA em outro local aleatório!
+                    activePowerUps[i] = createRandomPowerUp(activePowerUps);
+                    updateHUD();
+                }
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 10. RENDERIZAÇÃO GRÁFICA NO CANVAS (TOP-DOWN)
+         * ============================================================================
+         */
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const timeSec = performance.now() / 1000;
+
+            // 1. Desenha os Pisos e Paredes do Hospital
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const tile = HOSPITAL_MAP[r][c];
+                    const x = c * TILE_SIZE;
+                    const y = r * TILE_SIZE;
+
+                    if (tile === 1) {
+                        // Parede Hospitalar com relevo
+                        ctx.fillStyle = '#1e293b';
+                        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                        ctx.fillStyle = '#334155';
+                        ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 8);
+                        ctx.strokeStyle = '#0f172a';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                    } else {
+                        // Azulejo de piso hospitalar
+                        const isChecker = (r + c) % 2 === 0;
+                        if (tile === 2 || tile === 3 || tile === 4) {
+                            ctx.fillStyle = isChecker ? '#0f2942' : '#12304d';
+                        } else {
+                            ctx.fillStyle = isChecker ? '#0f172a' : '#131c31';
+                        }
+                        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            // 2. Desenha os nomes das Salas no chão
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.font = '900 13px Inter, sans-serif';
+            for (const label of ROOM_LABELS) {
+                ctx.fillStyle = label.color;
+                ctx.fillText(label.text, label.x, label.y);
+            }
+            ctx.restore();
+
+            // 3. Desenha o PAINEL / FOLHA DE CONSULTA (Tile 4)
+            drawManualStation(manualPosition.x, manualPosition.y, timeSec);
+
+            // 4. Desenha a MACA E O PACIENTE COM AS CORES DOS PROBLEMAS (Tile 3)
+            drawPatientOnBed(bedPosition.x, bedPosition.y, timeSec);
+
+            // 5. Desenha os ACIDENTES HOSPITALARES (CONTORNO VERMELHO)
+            drawHospitalAccidents(timeSec);
+
+            // 6. Desenha os POWER-UPS (CONTORNO VERDE)
+            drawPowerUps(timeSec);
+
+            // 7. Desenha as 20 Ferramentas Médicas espalhadas pelo Labirinto (com destaque se Foco estiver ativo!)
+            for (const item of floorTools) {
+                const distToPlayer = Math.hypot(player.x - item.x, player.y - item.y);
+                const isNear = distToPlayer < 65;
+                const isNeededForPatient = activeProblems.some(p => p.id === item.toolData.id);
+                const isHighlightedByFocus = playerEffects.focus > 0 && isNeededForPatient;
+
+                ctx.save();
+
+                // Se o Power-Up de Foco estiver ativo e esta ferramenta curar o paciente atual, desenha um super brilho!
+                if (isHighlightedByFocus) {
+                    const pulseRadius = 22 + Math.sin(timeSec * 8) * 5;
+                    ctx.beginPath();
+                    ctx.arc(item.x, item.y, pulseRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(250, 204, 21, 0.28)';
+                    ctx.fill();
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#facc15';
+                    ctx.stroke();
+
+                    // Tag "★ CURA!" acima do item
+                    ctx.font = '900 10px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillText('★ CURA!', item.x, item.y - 25);
+                }
+
+                // Base do item
+                ctx.beginPath();
+                ctx.arc(item.x, item.y, isNear ? 17 : 14, 0, Math.PI * 2);
+                ctx.fillStyle = isHighlightedByFocus
+                    ? 'rgba(234, 179, 8, 0.35)'
+                    : (isNear ? 'rgba(56, 189, 248, 0.28)' : 'rgba(30, 41, 59, 0.85)');
+                ctx.fill();
+                ctx.lineWidth = isHighlightedByFocus ? 3 : (isNear ? 2.5 : 1.5);
+                ctx.strokeStyle = isHighlightedByFocus ? '#fde047' : (isNear ? '#38bdf8' : '#475569');
+                ctx.stroke();
+
+                // Emoji do Aparelho Médico
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const floatOffset = Math.sin(timeSec * 3 + item.x) * 2;
+                ctx.fillText(item.toolData.toolIcon, item.x, item.y + floatOffset);
+
+                // Se o médico chegar perto (ou se estiver com Foco ativo), mostra o nome do aparelho
+                if (isNear || isHighlightedByFocus) {
+                    ctx.font = 'bold 11px Inter, sans-serif';
+                    const textWidth = ctx.measureText(item.toolData.toolName).width + 10;
+                    const labelY = isHighlightedByFocus ? item.y + 24 : item.y - 32;
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                    ctx.fillRect(item.x - textWidth / 2, labelY, textWidth, 16);
+                    ctx.strokeStyle = isHighlightedByFocus ? '#facc15' : '#38bdf8';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(item.x - textWidth / 2, labelY, textWidth, 16);
+                    ctx.fillStyle = isHighlightedByFocus ? '#fef08a' : '#f8fafc';
+                    ctx.fillText(item.toolData.toolName, item.x, labelY + 8);
+                }
+                ctx.restore();
+            }
+
+            // 8. Desenha os Médicos/Enfermeiros vagando pelo hospital (CONTORNO AMARELO)
+            drawRoamingNPCs(timeSec);
+
+            // 9. Desenha o Jogador (Médico Substituto)
+            drawDoctorPlayer(player.x, player.y, timeSec);
+
+            // 10. Desenha os Textos Flutuantes (+CURADO, -5s ERRO, etc.)
+            for (const ft of floatingTexts) {
+                ctx.save();
+                ctx.globalAlpha = ft.alpha;
+                ctx.font = '900 14px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 4;
+                ctx.strokeText(ft.text, ft.x, ft.y);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            }
+        }
+
+        // Desenha os Acidentes Hospitalares com CONTORNO VERMELHO (#FF3333)
+        function drawHospitalAccidents(timeSec) {
+            for (const acc of hospitalAccidents) {
+                ctx.save();
+                const isVolatileArmed = acc.type === 'VOLATILE' && acc.timer > 8.0;
+                const pulse = Math.sin(timeSec * 7) * 2;
+
+                // Fundo de perigo vermelho
+                ctx.beginPath();
+                ctx.arc(acc.x, acc.y, acc.radius + pulse, 0, Math.PI * 2);
+                if (acc.type === 'VOLATILE' && !isVolatileArmed) {
+                    // Composto volátil explodido trancando passagem (barricada sólida vermelha/laranja)
+                    ctx.fillStyle = 'rgba(220, 38, 38, 0.78)';
+                } else {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+                }
+                ctx.fill();
+
+                // CONTORNO VERMELHO FORTE (#FF3333)
+                ctx.lineWidth = 3.5;
+                ctx.strokeStyle = '#ff3333';
+                ctx.stroke();
+
+                // Arco de contagem regressiva dos 10 segundos
+                const ratio = Math.max(0, acc.timer / acc.maxTimer);
+                ctx.beginPath();
+                ctx.arc(acc.x, acc.y, acc.radius + 4, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * ratio));
+                ctx.strokeStyle = '#fca5a5';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Ícone do Acidente
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const displayIcon = isVolatileArmed ? '🧨' : acc.icon;
+                ctx.fillText(displayIcon, acc.x, acc.y);
+
+                // Pequeno rótulo de aviso
+                ctx.font = '800 9px Inter, sans-serif';
+                ctx.fillStyle = '#fecdd3';
+                const label = (acc.type === 'VOLATILE' && !isVolatileArmed)
+                    ? `BLOQUEADO (${acc.timer.toFixed(0)}s)`
+                    : `${acc.name} (${acc.timer.toFixed(0)}s)`;
+                ctx.fillText(label, acc.x, acc.y + acc.radius + 10);
+
+                ctx.restore();
+            }
+        }
+
+        // Desenha os Power-Ups com CONTORNO VERDE (#00FF66)
+        function drawPowerUps(timeSec) {
+            for (const pu of activePowerUps) {
+                ctx.save();
+                const pulse = Math.sin(timeSec * 5) * 2;
+
+                // Círculo com CONTORNO VERDE (#00FF66)
+                ctx.beginPath();
+                ctx.arc(pu.x, pu.y, pu.radius + pulse, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
+                ctx.fill();
+                ctx.lineWidth = 3.5;
+                ctx.strokeStyle = '#00ff66';
+                ctx.stroke();
+
+                // Arco indicando os 10s restantes no mapa
+                const ratio = Math.max(0, pu.timer / pu.maxTimer);
+                ctx.beginPath();
+                ctx.arc(pu.x, pu.y, pu.radius + 4, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * ratio));
+                ctx.strokeStyle = '#a7f3d0';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Ícone do Power-Up (☕, 💊 ou 🧠)
+                ctx.font = '19px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(pu.icon, pu.x, pu.y);
+
+                // Nome curto abaixo
+                ctx.font = '800 9px Inter, sans-serif';
+                ctx.fillStyle = '#6ee7b7';
+                ctx.fillText(`${pu.name} (${pu.timer.toFixed(0)}s)`, pu.x, pu.y + pu.radius + 10);
+
+                ctx.restore();
+            }
+        }
+
+        // Desenha os Médicos/Enfermeiros com CONTORNO AMARELO (#FFD700)
+        function drawRoamingNPCs(timeSec) {
+            for (const npc of roamingNPCs) {
+                ctx.save();
+
+                // Sombra
+                ctx.beginPath();
+                ctx.arc(npc.x, npc.y + 3, npc.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.fill();
+
+                // Corpo com CONTORNO AMARELO (#FFD700)
+                ctx.beginPath();
+                ctx.arc(npc.x, npc.y, npc.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#1e293b';
+                ctx.fill();
+                ctx.lineWidth = 3.5;
+                ctx.strokeStyle = '#ffd700';
+                ctx.stroke();
+
+                // Emoji de Médico/Enfermeiro
+                ctx.font = '19px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(npc.icon, npc.x, npc.y + Math.sin(timeSec * 8 + npc.x) * 1.5);
+
+                ctx.restore();
+            }
+        }
+
+        // Desenha a bancada com a Folha de Cola ao lado do paciente
+        function drawManualStation(x, y, timeSec) {
+            ctx.save();
+            // Mesa / Bancada
+            ctx.fillStyle = '#78350f';
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.fillRect(x - 18, y - 16, 36, 32);
+            ctx.strokeRect(x - 18, y - 16, 36, 32);
+
+            // Brilho pulsante convidando o jogador a consultar
+            const pulse = (Math.sin(timeSec * 4) + 1) * 0.5;
+            ctx.beginPath();
+            ctx.arc(x, y, 22 + pulse * 5, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(251, 191, 36, ${0.3 + pulse * 0.4})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Ícone da Folha
+            ctx.font = '22px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📋', x, y);
+
+            // Rótulo "FOLHA (E)"
+            ctx.font = '900 10px Inter, sans-serif';
+            ctx.fillStyle = '#fef3c7';
+            ctx.fillText('FOLHA [E]', x, y - 24);
+            ctx.restore();
+        }
+
+        // Desenha a Maca e o Paciente mudando de cor conforme os sintomas ativos!
+        function drawPatientOnBed(x, y, timeSec) {
+            ctx.save();
+
+            // Base da Maca Hospitalar
+            ctx.fillStyle = '#e2e8f0';
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.fillRect(x - 22, y - 28, 44, 56);
+            ctx.strokeRect(x - 22, y - 28, 44, 56);
+
+            // Travesseiro
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(x - 16, y - 24, 32, 12);
+
+            // Determina as cores do corpo do paciente com base nos problemas ativos!
+            const hasGreenSkin = activeProblems.some(p => p.id === 1); // Pele Verde -> Serrote
+            const hasRedLimb   = activeProblems.some(p => p.id === 2); // Membro Vermelho -> Analgésicos
+            const hasBlueFace  = activeProblems.some(p => p.id === 3); // Rosto Azul -> Estetoscópio
+
+            const faceProblem  = activeProblems.find(p => p.part === 'face');
+            const limbProblem  = activeProblems.find(p => p.part === 'limb');
+            const chestProblem = activeProblems.find(p => p.part === 'chest');
+            const feetProblem  = activeProblems.find(p => p.part === 'feet');
+            const auraProblem  = activeProblems.find(p => p.part === 'aura');
+
+            // Aura pulsante caso tenha sintoma de aura
+            if (auraProblem) {
+                ctx.beginPath();
+                ctx.arc(x, y, 28 + Math.sin(timeSec * 6) * 4, 0, Math.PI * 2);
+                ctx.fillStyle = auraProblem.color + '44';
+                ctx.fill();
+            }
+
+            // Tronco do Paciente
+            ctx.fillStyle = chestProblem ? chestProblem.color : (hasGreenSkin ? '#22c55e' : '#60a5fa');
+            ctx.fillRect(x - 11, y - 6, 22, 20);
+
+            // Braços / Membros (Ficam vermelhos se tiver Membro Vermelho!)
+            const limbColor = hasRedLimb ? '#ef4444' : (limbProblem ? limbProblem.color : (hasGreenSkin ? '#22c55e' : '#fdba74'));
+            ctx.fillStyle = limbColor;
+            ctx.fillRect(x - 18, y - 5, 6, 16); // Braço esquerdo
+            ctx.fillRect(x + 12, y - 5, 6, 16); // Braço direito
+
+            // Pernas / Pés
+            const feetColor = feetProblem ? feetProblem.color : (hasRedLimb ? '#ef4444' : (hasGreenSkin ? '#22c55e' : '#94a3b8'));
+            ctx.fillStyle = feetColor;
+            ctx.fillRect(x - 9, y + 14, 7, 11);
+            ctx.fillRect(x + 2, y + 14, 7, 11);
+
+            // Cabeça / Rosto do Paciente (Fica Verde, Azul ou da cor do sintoma facial)
+            const headColor = hasBlueFace ? '#3b82f6' : (hasGreenSkin ? '#22c55e' : (faceProblem ? faceProblem.color : '#fed7aa'));
+            ctx.beginPath();
+            ctx.arc(x, y - 14, 9, 0, Math.PI * 2);
+            ctx.fillStyle = headColor;
+            ctx.fill();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#0f172a';
+            ctx.stroke();
+
+            // Desenha pequenas bolinhas coloridas ao redor da maca representando todos os problemas restantes
+            const total = activeProblems.length;
+            for (let i = 0; i < total; i++) {
+                const angle = (timeSec * 1.5) + (i * (Math.PI * 2 / total));
+                const bx = x + Math.cos(angle) * 29;
+                const by = y + Math.sin(angle) * 29;
+                ctx.beginPath();
+                ctx.arc(bx, by, 5, 0, Math.PI * 2);
+                ctx.fillStyle = activeProblems[i].color;
+                ctx.fill();
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Rótulo acima da maca
+            ctx.font = '900 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#fda4af';
+            ctx.fillText(`PACIENTE (${activeProblems.length} PROB.)`, x, y - 34);
+
+            ctx.restore();
+        }
+
+        // Desenha o Médico Substituto controlado pelo jogador
+        function drawDoctorPlayer(x, y, timeSec) {
+            ctx.save();
+
+            // Se estiver sob efeito do Calmante (Intangível), fica semitransparente!
+            if (playerEffects.calmante > 0) {
+                ctx.globalAlpha = 0.55 + Math.sin(timeSec * 12) * 0.15;
+            }
+
+            // Aura de velocidade caso o Café esteja ativo
+            if (playerEffects.coffee > 0) {
+                ctx.beginPath();
+                ctx.arc(x, y, player.radius + 6, 0, Math.PI * 2);
+                ctx.strokeStyle = '#00ff66';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Sombra embaixo do médico
+            ctx.beginPath();
+            ctx.arc(x, y + 3, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fill();
+
+            // Corpo (Jaleco Branco com borda Ciano ou Verde se Intangível)
+            ctx.beginPath();
+            ctx.arc(x, y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = playerEffects.calmante > 0 ? '#00ff66' : (playerEffects.confused > 0 ? '#ff3333' : '#06b6d4');
+            ctx.stroke();
+
+            // Cruz vermelha de médico no jaleco
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(x - 2, y - 6, 4, 12);
+            ctx.fillRect(x - 6, y - 2, 12, 4);
+
+            // Indicador de confusão (controles invertidos) ou lentidão acima da cabeça
+            if (playerEffects.confused > 0 && playerEffects.calmante <= 0) {
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('💫❓', x, y - 20);
+            } else if (playerEffects.slow > 0 && playerEffects.calmante <= 0) {
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('🦠🐌', x, y - 20);
+            }
+
+            // Se o médico estiver segurando uma ferramenta, desenha ela acima dele!
+            if (player.heldTool) {
+                ctx.font = '18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(player.heldTool.toolIcon, x, y - 24 + Math.sin(timeSec * 6) * 2);
+            }
+
+            ctx.restore();
+        }
+
+        /**
+         * ============================================================================
+         * 11. EVENTOS DE TECLADO E LOOP PRINCIPAL (60 FPS)
+         * ============================================================================
+         */
+        window.addEventListener('keydown', (e) => {
+            // Se estiver digitando na busca da folha de cola, só captura ESC
+            if (document.activeElement === document.getElementById('manualSearch')) {
+                if (e.key === 'Escape') closeManual();
+                return;
+            }
+
+            const code = e.code;
+            if (code === 'KeyW' || code === 'ArrowUp')    { keys.up = true; e.preventDefault(); }
+            if (code === 'KeyS' || code === 'ArrowDown')  { keys.down = true; e.preventDefault(); }
+            if (code === 'KeyA' || code === 'ArrowLeft')  { keys.left = true; e.preventDefault(); }
+            if (code === 'KeyD' || code === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+
+            if (code === 'KeyE' || code === 'Space') {
+                e.preventDefault();
+                handleInteractAction();
+            }
+            if (code === 'Escape') {
+                closeManual();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const code = e.code;
+            if (code === 'KeyW' || code === 'ArrowUp')    keys.up = false;
+            if (code === 'KeyS' || code === 'ArrowDown')  keys.down = false;
+            if (code === 'KeyA' || code === 'ArrowLeft')  keys.left = false;
+            if (code === 'KeyD' || code === 'ArrowRight') keys.right = false;
+        });
+
+        function setTouchKey(dir, state) {
+            keys[dir] = state;
+        }
+
+        // Loop Principal de Animação do Jogo
+        function gameLoop(now) {
+            const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+
+            updateGame(dt);
+            drawGame();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function () {
+            setupPatientRound(3);
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
